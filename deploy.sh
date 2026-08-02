@@ -494,3 +494,133 @@ EOF
 
 chmod 600 /root/ahmia-credentials.txt
 echo "Credentials saved to: /root/ahmia-credentials.txt"
+
+# Create deploy-pull.sh
+log "Creating deploy scripts..."
+mkdir -p "$AHMIA_DIR/logs"
+
+cat > "$AHMIA_DIR/deploy-pull.sh" << 'DEPLOY_EOF'
+#!/bin/bash
+set -e
+
+BRANCH="main"
+PROJECT_DIR="/opt/ahmia"
+CRAWLER_DIR="/opt/ahmia-crawler"
+LOG_DIR="${LOG_DIR:-$PROJECT_DIR/logs}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/deploy.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo ""
+echo "=== Deploy started at $TIMESTAMP ==="
+
+echo "[1/7] Pulling latest code..."
+cd "$PROJECT_DIR"
+git stash 2>/dev/null || true
+git pull origin "$BRANCH"
+
+echo "[2/7] Activating venv..."
+source "$PROJECT_DIR/venv/bin/activate"
+
+echo "[3/7] Installing Python dependencies..."
+pip install -r requirements.txt -q
+
+echo "[4/7] Running migrations..."
+python manage.py migrate --noinput
+
+echo "[5/7] Collecting static files..."
+python manage.py collectstatic --noinput 2>/dev/null || true
+
+deactivate
+
+echo "[6/7] Updating crawler..."
+cd "$CRAWLER_DIR"
+git stash 2>/dev/null || true
+git pull origin master 2>/dev/null || true
+source "$CRAWLER_DIR/venv/bin/activate"
+pip install -q scrapy Twisted cryptography pyOpenSSL elasticsearch requests python-decouple html2text
+deactivate
+
+echo "[7/7] Restarting services..."
+supervisorctl restart ahmia-web
+supervisorctl restart ahmia-crawler
+
+echo "=== Deploy completed at $(date '+%Y-%m-%d %H:%M:%S') ==="
+echo ""
+DEPLOY_EOF
+
+chmod +x "$AHMIA_DIR/deploy-pull.sh"
+
+# Create auto-deploy.sh
+cat > "$AHMIA_DIR/auto-deploy.sh" << 'AUTO_EOF'
+#!/bin/bash
+set -e
+
+BRANCH="main"
+PROJECT_DIR="/opt/ahmia"
+LOG_DIR="${LOG_DIR:-$PROJECT_DIR/logs}"
+
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/auto-deploy.log"
+
+cd "$PROJECT_DIR"
+
+git fetch origin "$BRANCH" --quiet
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse "origin/$BRANCH")
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+    exit 0
+fi
+
+echo "" >> "$LOG_FILE"
+echo "=== Auto-deploy started at $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$LOG_FILE"
+echo "Local:  $LOCAL" >> "$LOG_FILE"
+echo "Remote: $REMOTE" >> "$LOG_FILE"
+
+exec >> "$LOG_FILE" 2>&1
+
+git stash 2>/dev/null || true
+git pull origin "$BRANCH"
+
+source "$PROJECT_DIR/venv/bin/activate"
+
+if git diff HEAD@{1} --name-only 2>/dev/null | grep -q "requirements.txt"; then
+    echo "Installing updated dependencies..."
+    pip install -r requirements.txt -q
+fi
+
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput 2>/dev/null || true
+
+deactivate
+
+supervisorctl restart ahmia-web
+supervisorctl restart ahmia-crawler
+
+echo "=== Auto-deploy completed at $(date '+%Y-%m-%d %H:%M:%S') ==="
+AUTO_EOF
+
+chmod +x "$AHMIA_DIR/auto-deploy.sh"
+
+# Setup cron for auto-deploy (every 2 minutes)
+log "Setting up auto-deploy cron..."
+CRON_JOB="*/2 * * * * /bin/bash $AHMIA_DIR/auto-deploy.sh 2>&1"
+
+# Remove existing ahmia cron entries and add new one
+(crontab -l 2>/dev/null | grep -v "auto-deploy.sh" || true; echo "$CRON_JOB") | crontab -
+
+echo ""
+echo "============================================"
+echo "Auto-Deploy Configured:"
+echo "============================================"
+echo "  Manual:  bash $AHMIA_DIR/deploy-pull.sh"
+echo "  Auto:    Cron runs every 2 minutes"
+echo "  Logs:    tail -f $AHMIA_DIR/logs/auto-deploy.log"
+echo ""
+echo "Verify cron:"
+echo "  crontab -l"
+echo ""
