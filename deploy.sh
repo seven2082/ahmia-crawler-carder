@@ -186,7 +186,7 @@ cd "$CRAWLER_DIR"
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip -q
-pip install scrapy Twisted cryptography pyOpenSSL elasticsearch requests python-decouple html2text -q
+pip install scrapy Twisted cryptography pyOpenSSL "elasticsearch>=8.0.0,<9.0.0" requests python-decouple html2text -q
 deactivate
 
 # Crawler settings
