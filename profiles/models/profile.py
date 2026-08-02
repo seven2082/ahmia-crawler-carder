@@ -1,7 +1,9 @@
 import secrets
+import hashlib
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.utils.text import slugify
 from datetime import timedelta
 
 from .base import BaseModel
@@ -9,6 +11,13 @@ from .taxonomy import Category, Tag
 from ..constants import ProfileStatus, MigrationSource, VERIFICATION_TOKEN_EXPIRY_DAYS
 
 User = get_user_model()
+
+
+def generate_deterministic_slug(domain: str) -> str:
+    """Generate deterministic slug from domain. Same domain = same slug always."""
+    domain_clean = domain.lower().replace('.onion', '').strip()
+    hash_part = hashlib.sha256(domain_clean.encode()).hexdigest()[:12]
+    return f"site-{hash_part}"
 
 
 class OnionProfile(BaseModel):
@@ -92,6 +101,12 @@ class OnionProfile(BaseModel):
             name = self.current_domain.replace('.onion', '')
             return f"{name[:8]}...{name[-8:]}.onion"
         return self.current_domain
+
+    def save(self, *args, **kwargs):
+        """Auto-generate deterministic slug from domain if not set."""
+        if not self.slug and self.current_domain:
+            self.slug = generate_deterministic_slug(self.current_domain)
+        super().save(*args, **kwargs)
 
 
 class ProfileTag(models.Model):
