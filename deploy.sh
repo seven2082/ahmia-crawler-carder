@@ -365,7 +365,7 @@ systemctl restart nginx
 supervisorctl reread
 supervisorctl update
 sleep 3
-supervisorctl restart all
+supervisorctl restart all || true
 
 # Wait and verify
 log "Waiting for services to stabilize..."
