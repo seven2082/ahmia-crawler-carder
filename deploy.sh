@@ -353,26 +353,18 @@ if command -v aa-status &> /dev/null; then
 fi
 
 cat > /etc/privoxy/config << EOF
+# Privoxy config for Ahmia crawler
 listen-address 127.0.0.1:8118
 toggle 0
 enable-remote-toggle 0
 enable-remote-http-toggle 0
 enable-edit-actions 0
 buffer-limit 4096
-forwarded-connect-retries 0
-accept-intercepted-requests 0
-allow-cgi-request-crunching 0
-split-large-forms 0
-keep-alive-timeout 5
-tolerate-pipelining 1
-socket-timeout 60
-EOF
 
-# Round-robin Tor forwarding
-for i in $(seq 1 $TOR_INSTANCES); do
-    TOR_PORT=$((9050 + $i - 1))
-    echo "forward-socks5 .onion 127.0.0.1:${TOR_PORT} ." >> /etc/privoxy/config
-done
+# Forward ALL traffic through Tor SOCKS5 (primary instance)
+# This ensures .onion DNS resolution works properly
+forward-socks5t / 127.0.0.1:9050 .
+EOF
 
 # Supervisor configuration
 log "Configuring Supervisor..."
