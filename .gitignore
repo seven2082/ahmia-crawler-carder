@@ -17,3 +17,7 @@ db.sqlite3
 *.sqlite3
 __pycache__/
 .pytest_cache/
+
+# Deploy scripts (server-specific)
+deploy-pull.sh
+auto-deploy.sh
