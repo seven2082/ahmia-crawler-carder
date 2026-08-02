@@ -1,0 +1,18 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Tags" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Tags" %}</h1>
+
+<div class="tag-cloud">
+    {% for tag in tags %}
+    <a href="{% url 'profiles:tag_detail' slug=tag.slug %}" class="tag">
+        {{ tag.name }} <span class="count">({{ tag.profile_count }})</span>
+    </a>
+    {% empty %}
+    <p>{% trans "No tags yet." %}</p>
+    {% endfor %}
+</div>
+{% endblock %}

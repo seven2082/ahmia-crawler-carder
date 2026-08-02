@@ -1,0 +1,205 @@
+upstream django {
+    server unix:/tmp/ahmia.sock fail_timeout=0;
+}
+
+upstream django-onion {
+    server unix:/tmp/msydqstlz2kzerdg.sock fail_timeout=0;
+}
+
+# Map for banned query terms from external file
+map $request_uri $no_cache {
+    include /etc/nginx/banned_terms.map;
+}
+
+# (4) Cheap hygiene: rate-limit by User-Agent (since IPs are useless on Tor)
+#    Tweak rate/burst to taste.
+limit_req_zone $http_user_agent zone=ua_search:10m rate=5r/s;
+
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    return 301 https://$host$request_uri;
+}
+
+# Remove www
+server {
+    server_name "~^www\.(.*)$";
+    return 301 $scheme://$1$request_uri;
+}
+
+# Ban User-Agents containing "python" (case-insensitive)
+map $http_user_agent $block_python_ua {
+    default 0;
+    ~*python 1;
+    ~*wget 1;
+}
+
+# Cache config
+proxy_cache_path /var/cache/nginx/ levels=1:2 keys_zone=my_cache:10m max_size=10g inactive=30m;
+
+# Main Ahmia server
+server {
+    listen 443 ssl;
+    server_name ahmia.fi;
+
+    if ($block_python_ua) {
+        return 403;
+    }
+
+    charset utf-8;
+    client_max_body_size 75M;
+
+    ssl_trusted_certificate /etc/letsencrypt/live/ahmia.fi/chain.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_certificate_key /etc/letsencrypt/live/ahmia.fi/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/ahmia.fi/fullchain.pem;
+
+    add_header Strict-Transport-Security "max-age=63072000; includeSubdomains";
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header Onion-Location http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion$request_uri;
+
+    access_log /usr/local/lib/search/error/access.log no_ip;
+    error_log /usr/local/lib/search/error/error.log;
+
+    location /static/ {
+        alias /usr/local/lib/ahmia-site/ahmia/staticfiles/;
+        try_files $uri $uri/ =404;
+    }
+
+    # ---- NEW: Dedicated search location with guards ----
+    location ^~ /search/ {
+        #  - Throttle noisy UAs (cannot rely on IP with Tor/HS)
+        limit_req zone=ua_search burst=20 nodelay;
+
+        # Keep your normal proxy/cache behavior for search, too
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+
+        proxy_pass http://django;
+        include proxy_params;
+
+        proxy_cache my_cache;
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+
+        proxy_cache_valid 200 301 302 30m;
+
+        proxy_no_cache $no_cache;
+        proxy_cache_bypass $no_cache;
+    }
+
+    # Main search service
+    location / {
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+
+        proxy_pass http://django;
+        include proxy_params;
+
+        add_header X-Cache-Status $upstream_cache_status always;
+	add_header Onion-Location http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion$request_uri always;
+
+        proxy_cache my_cache;
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+
+        proxy_cache_valid 200 301 302 30m;
+
+        proxy_no_cache $no_cache;
+        proxy_cache_bypass $no_cache;
+    }
+
+    # Bypass cache for /add/
+    location ~* ^/add/ {
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_pass http://django;
+        include proxy_params;
+
+        proxy_no_cache 1;
+        proxy_cache_bypass 1;
+    }
+
+}
+
+# Redirect legacy onion address
+server {
+    listen 127.0.0.1:56789;
+    server_name .msydqstlz2kzerdg.onion;
+    return 301 http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion$request_uri;
+}
+
+# Onion server
+server {
+    listen 127.0.0.1:56790;
+    server_name juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion;
+
+    if ($block_python_ua) {
+        return 403;
+    }
+
+    charset utf-8;
+    client_max_body_size 75M;
+
+    access_log /usr/local/lib/search/error/hs_access.log no_ip;
+    error_log /usr/local/lib/search/error/hs_error.log;
+
+    location /static/ {
+        alias /usr/local/lib/ahmia-site/ahmia/staticfiles/;
+        try_files $uri $uri/ =404;
+    }
+
+    # ---- NEW: Dedicated search location with guards ----
+    location ^~ /search/ {
+        #  - Throttle noisy UAs (cannot rely on IP with Tor/HS)
+        limit_req zone=ua_search burst=20 nodelay;
+
+        # Keep your normal proxy/cache behavior for search, too
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+
+        proxy_pass http://django-onion;
+        include proxy_params;
+
+        add_header X-Cache-Status $upstream_cache_status always;
+        add_header Onion-Location http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion$request_uri always;
+
+        proxy_cache my_cache;
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+
+        proxy_cache_valid 200 301 302 30m;
+
+        proxy_no_cache $no_cache;
+        proxy_cache_bypass $no_cache;
+    }
+
+    location / {
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+
+        proxy_pass http://django-onion;
+        include proxy_params;
+
+        proxy_cache my_cache;
+        proxy_cache_min_uses 1;
+        proxy_cache_methods GET HEAD;
+
+        proxy_cache_valid 200 301 302 30m;
+
+        proxy_no_cache $no_cache;
+        proxy_cache_bypass $no_cache;
+    }
+
+    location ~* ^/add/ {
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_pass http://django-onion;
+        include proxy_params;
+
+        proxy_no_cache 1;
+        proxy_cache_bypass 1;
+    }
+
+}

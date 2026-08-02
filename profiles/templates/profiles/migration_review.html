@@ -1,0 +1,69 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Review Migration" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Review Domain Migration" %}</h1>
+
+<div class="review-context">
+    <p>
+        {% trans "Site:" %}
+        <a href="{% url 'profiles:detail' slug=profile.slug %}">{{ profile.name }}</a>
+    </p>
+    <p>
+        {% trans "Submitted by:" %} {{ migration.submitted_by }}
+        {% trans "on" %} {{ migration.created_at|date:"M d, Y H:i" }}
+    </p>
+    <p>{% trans "Source:" %} {{ migration.get_source_display }}</p>
+</div>
+
+<div class="migration-diff">
+    <div class="diff-row">
+        <div class="diff-old">
+            <span class="label">{% trans "Current Domain" %}</span>
+            <code>{{ migration.old_domain }}</code>
+        </div>
+        <div class="diff-arrow">&rarr;</div>
+        <div class="diff-new">
+            <span class="label">{% trans "New Domain" %}</span>
+            <code>{{ migration.new_domain }}</code>
+        </div>
+    </div>
+</div>
+
+{% if migration.evidence_url %}
+<div class="evidence">
+    <h3>{% trans "Evidence" %}</h3>
+    <p>
+        <a href="{{ migration.evidence_url }}" target="_blank" rel="noopener">
+            {{ migration.evidence_url }}
+        </a>
+    </p>
+    {% if migration.evidence_text %}
+    <blockquote>{{ migration.evidence_text }}</blockquote>
+    {% endif %}
+</div>
+{% endif %}
+
+<form method="post" class="review-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="id_notes">{% trans "Notes (optional)" %}</label>
+        {{ form.notes }}
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" name="action" value="approve" class="btn btn-success">
+            {% trans "Approve Migration" %}
+        </button>
+        <button type="submit" name="action" value="reject" class="btn btn-danger">
+            {% trans "Reject" %}
+        </button>
+        <a href="{% url 'profiles:moderation_queue' %}" class="btn btn-secondary">
+            {% trans "Back to Queue" %}
+        </a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{{ profile.name }}{% endblock %}
+
+{% block profiles_content %}
+<article class="profile-detail">
+    <header>
+        <h1>{{ profile.name }}</h1>
+        {% if profile.is_verified %}
+        <span class="verified-badge">{% trans "Verified Owner" %}</span>
+        {% endif %}
+        {% if profile.category %}
+        <a href="{% url 'profiles:category_detail' slug=profile.category.slug %}" class="category-link">
+            {{ profile.category.name }}
+        </a>
+        {% endif %}
+    </header>
+
+    <section class="profile-body">
+        <p class="description">{{ profile.description }}</p>
+
+        {% include "profiles/_stats_box.html" %}
+
+        <div class="actions">
+            <a href="http://{{ profile.current_domain }}" class="btn btn-primary" target="_blank" rel="noopener">
+                {% trans "Visit Site" %} (.onion)
+            </a>
+            <a href="{% url 'profiles:edit' slug=profile.slug %}" class="btn btn-secondary">
+                {% trans "Suggest Edit" %}
+            </a>
+            {% if not profile.is_verified %}
+            <a href="{% url 'profiles:claim' slug=profile.slug %}" class="btn btn-secondary">
+                {% trans "Claim This Site" %}
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if top_pages %}
+    <section class="top-pages">
+        <h2>{% trans "Popular Pages" %}</h2>
+        <ul>
+            {% for page in top_pages %}
+            <li>
+                <a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.title|default:page.url }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if domain_history %}
+    <section class="domain-history">
+        <h2>{% trans "Domain History" %}</h2>
+        {% include "profiles/_domain_history.html" %}
+    </section>
+    {% endif %}
+
+    <footer class="profile-meta">
+        <a href="{% url 'profiles:history' slug=profile.slug %}">{% trans "View Edit History" %}</a>
+    </footer>
+</article>
+{% endblock %}

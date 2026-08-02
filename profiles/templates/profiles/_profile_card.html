@@ -1,0 +1,14 @@
+{% load i18n %}
+<article class="profile-card">
+    <h3><a href="{% url 'profiles:detail' slug=profile.slug %}">{{ profile.name }}</a></h3>
+    {% if profile.category %}
+    <span class="category-badge">{{ profile.category.name }}</span>
+    {% endif %}
+    <p class="description">{{ profile.description|truncatechars:150 }}</p>
+    <div class="meta">
+        <span class="page-count">{{ profile.page_count }} {% trans "pages" %}</span>
+        {% if profile.is_verified %}
+        <span class="verified-badge">{% trans "Verified" %}</span>
+        {% endif %}
+    </div>
+</article>

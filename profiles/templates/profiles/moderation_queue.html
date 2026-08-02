@@ -1,0 +1,96 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Moderation Queue" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Moderation Queue" %}</h1>
+
+<p class="queue-stats">
+    {% blocktrans with count=pending_count %}{{ count }} items pending review{% endblocktrans %}
+</p>
+
+<section class="pending-edits">
+    <h2>{% trans "Pending Edits" %}</h2>
+
+    {% if items %}
+    <table class="queue-table">
+        <thead>
+            <tr>
+                <th>{% trans "Site" %}</th>
+                <th>{% trans "Field" %}</th>
+                <th>{% trans "Submitted" %}</th>
+                <th>{% trans "By" %}</th>
+                <th>{% trans "Action" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for edit in items %}
+            <tr>
+                <td>
+                    <a href="{% url 'profiles:detail' slug=edit.profile.slug %}">
+                        {{ edit.profile.name }}
+                    </a>
+                </td>
+                <td>{{ edit.field_name }}</td>
+                <td>{{ edit.created_at|timesince }} {% trans "ago" %}</td>
+                <td>{{ edit.submitted_by }}</td>
+                <td>
+                    <a href="{% url 'profiles:edit_review' edit_id=edit.id %}" class="btn btn-small">
+                        {% trans "Review" %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">{% trans "No pending edits." %}</p>
+    {% endif %}
+</section>
+
+{% if pending_migrations %}
+<section class="pending-migrations">
+    <h2>{% trans "Pending Migrations" %}</h2>
+
+    <table class="queue-table">
+        <thead>
+            <tr>
+                <th>{% trans "Site" %}</th>
+                <th>{% trans "Old Domain" %}</th>
+                <th>{% trans "New Domain" %}</th>
+                <th>{% trans "Submitted" %}</th>
+                <th>{% trans "Action" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for migration in pending_migrations %}
+            <tr>
+                <td>{{ migration.profile.name }}</td>
+                <td><code>{{ migration.old_domain|truncatechars:30 }}</code></td>
+                <td><code>{{ migration.new_domain|truncatechars:30 }}</code></td>
+                <td>{{ migration.created_at|timesince }} {% trans "ago" %}</td>
+                <td>
+                    <a href="{% url 'profiles:migration_review' migration_id=migration.id %}" class="btn btn-small">
+                        {% trans "Review" %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+
+{% if page_obj.has_other_pages %}
+<nav class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+    {% endif %}
+    <span>{% trans "Page" %} {{ page_obj.number }}</span>
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+    {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% block profiles_title %}{% trans "Onion Directory" %}{% endblock %} - Ahmia{% endblock %}
+
+{% block content %}
+<div class="container profiles-container">
+    <nav class="profiles-nav">
+        <a href="{% url 'profiles:list' %}" class="nav-link">{% trans "All Sites" %}</a>
+        <a href="{% url 'profiles:category_list' %}" class="nav-link">{% trans "Categories" %}</a>
+        <a href="{% url 'profiles:tag_list' %}" class="nav-link">{% trans "Tags" %}</a>
+        {% if contributor.can_review_edits %}
+        <a href="{% url 'profiles:moderation_queue' %}" class="nav-link">{% trans "Moderate" %}</a>
+        {% endif %}
+    </nav>
+
+    {% block profiles_content %}{% endblock %}
+</div>
+{% endblock %}

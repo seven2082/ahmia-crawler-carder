@@ -1,0 +1,28 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "All Sites" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Onion Directory" %}</h1>
+
+<div class="profile-grid">
+    {% for profile in profiles %}
+        {% include "profiles/_profile_card.html" %}
+    {% empty %}
+        <p>{% trans "No sites indexed yet." %}</p>
+    {% endfor %}
+</div>
+
+{% if page_obj.has_other_pages %}
+<nav class="pagination">
+    {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}">{% trans "Previous" %}</a>
+    {% endif %}
+    <span>{% trans "Page" %} {{ page_obj.number }} {% trans "of" %} {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}">{% trans "Next" %}</a>
+    {% endif %}
+</nav>
+{% endif %}
+{% endblock %}

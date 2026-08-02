@@ -1,0 +1,47 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Review Edit" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Review Edit" %}</h1>
+
+<div class="review-context">
+    <p>
+        {% trans "Site:" %}
+        <a href="{% url 'profiles:detail' slug=profile.slug %}">{{ profile.name }}</a>
+    </p>
+    <p>
+        {% trans "Submitted by:" %} {{ edit.submitted_by }}
+        {% trans "on" %} {{ edit.created_at|date:"M d, Y H:i" }}
+    </p>
+</div>
+
+{% include "profiles/_edit_diff.html" with edit=edit %}
+
+<form method="post" class="review-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label>{% trans "Decision" %}</label>
+        {{ form.action }}
+    </div>
+
+    <div class="form-group">
+        <label for="id_notes">{% trans "Notes (optional)" %}</label>
+        {{ form.notes }}
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" name="action" value="approve" class="btn btn-success">
+            {% trans "Approve" %}
+        </button>
+        <button type="submit" name="action" value="reject" class="btn btn-danger">
+            {% trans "Reject" %}
+        </button>
+        <a href="{% url 'profiles:moderation_queue' %}" class="btn btn-secondary">
+            {% trans "Back to Queue" %}
+        </a>
+    </div>
+</form>
+{% endblock %}

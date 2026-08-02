@@ -1,0 +1,19 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{{ category.name }}{% endblock %}
+
+{% block profiles_content %}
+<h1>{{ category.name }}</h1>
+{% if category.description %}
+<p class="category-description">{{ category.description }}</p>
+{% endif %}
+
+<div class="profile-grid">
+    {% for profile in profiles %}
+        {% include "profiles/_profile_card.html" %}
+    {% empty %}
+        <p>{% trans "No sites in this category." %}</p>
+    {% endfor %}
+</div>
+{% endblock %}

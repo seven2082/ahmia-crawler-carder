@@ -1,0 +1,16 @@
+{% load i18n %}
+<div class="edit-diff">
+    <h3>{{ edit.field_name|title }}</h3>
+
+    <div class="diff-row">
+        <div class="diff-old">
+            <span class="label">{% trans "Current" %}</span>
+            <div class="value">{{ edit.old_value|default:"(empty)" }}</div>
+        </div>
+        <div class="diff-arrow">&rarr;</div>
+        <div class="diff-new">
+            <span class="label">{% trans "Proposed" %}</span>
+            <div class="value">{{ edit.new_value }}</div>
+        </div>
+    </div>
+</div>

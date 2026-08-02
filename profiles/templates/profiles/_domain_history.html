@@ -1,0 +1,19 @@
+{% load i18n %}
+<table class="domain-history-table">
+    <thead>
+        <tr>
+            <th>{% trans "Domain" %}</th>
+            <th>{% trans "Active" %}</th>
+            <th>{% trans "Reason" %}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in domain_history %}
+        <tr>
+            <td><code>{{ entry.domain }}</code></td>
+            <td>{{ entry.first_seen|date:"M Y" }} - {{ entry.last_seen|date:"M Y"|default:"now" }}</td>
+            <td>{{ entry.reason|default:"-" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

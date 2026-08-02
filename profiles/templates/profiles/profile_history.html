@@ -1,0 +1,45 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "History" %} - {{ profile.name }}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Edit History for" %} {{ profile.name }}</h1>
+
+<a href="{% url 'profiles:detail' slug=profile.slug %}">&larr; {% trans "Back to profile" %}</a>
+
+{% if domain_history %}
+<section>
+    <h2>{% trans "Domain Changes" %}</h2>
+    {% include "profiles/_domain_history.html" %}
+</section>
+{% endif %}
+
+{% if recent_edits %}
+<section>
+    <h2>{% trans "Recent Edits" %}</h2>
+    <table class="edits-table">
+        <thead>
+            <tr>
+                <th>{% trans "Field" %}</th>
+                <th>{% trans "Change" %}</th>
+                <th>{% trans "Status" %}</th>
+                <th>{% trans "Date" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for edit in recent_edits %}
+            <tr>
+                <td>{{ edit.field_name }}</td>
+                <td>{{ edit.old_value|truncatechars:30 }} &rarr; {{ edit.new_value|truncatechars:30 }}</td>
+                <td class="status-{{ edit.status }}">{{ edit.get_status_display }}</td>
+                <td>{{ edit.created_at|date:"M d, Y" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% else %}
+<p>{% trans "No edits recorded yet." %}</p>
+{% endif %}
+{% endblock %}

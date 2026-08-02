@@ -1,0 +1,16 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}#{{ tag.name }}{% endblock %}
+
+{% block profiles_content %}
+<h1>#{{ tag.name }}</h1>
+
+<div class="profile-grid">
+    {% for profile in profiles %}
+        {% include "profiles/_profile_card.html" %}
+    {% empty %}
+        <p>{% trans "No sites with this tag." %}</p>
+    {% endfor %}
+</div>
+{% endblock %}

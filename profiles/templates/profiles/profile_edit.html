@@ -1,0 +1,38 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Edit" %} {{ profile.name }}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Suggest Edits for" %} {{ profile.name }}</h1>
+
+<p class="help-text">
+    {% trans "Your changes will be reviewed by the community before being applied." %}
+</p>
+
+<form method="post" class="edit-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="id_name">{% trans "Site Name" %}</label>
+        {{ form.name }}
+        <p class="current">{% trans "Current:" %} {{ profile.name }}</p>
+    </div>
+
+    <div class="form-group">
+        <label for="id_description">{% trans "Description" %}</label>
+        {{ form.description }}
+        <p class="current">{% trans "Current:" %} {{ profile.description|truncatechars:100 }}</p>
+    </div>
+
+    <div class="form-group">
+        <label for="id_category">{% trans "Category" %}</label>
+        {{ form.category }}
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{% trans "Submit for Review" %}</button>
+        <a href="{% url 'profiles:detail' slug=profile.slug %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Categories" %}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Categories" %}</h1>
+
+<ul class="category-list">
+    {% for category in categories %}
+    <li>
+        <a href="{% url 'profiles:category_detail' slug=category.slug %}">
+            {{ category.name }}
+        </a>
+        <span class="count">({{ category.profile_count }})</span>
+    </li>
+    {% empty %}
+    <li>{% trans "No categories yet." %}</li>
+    {% endfor %}
+</ul>
+{% endblock %}

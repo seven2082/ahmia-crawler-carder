@@ -1,0 +1,34 @@
+{% extends "profiles/base_profiles.html" %}
+{% load i18n %}
+
+{% block profiles_title %}{% trans "Claim" %} {{ profile.name }}{% endblock %}
+
+{% block profiles_content %}
+<h1>{% trans "Claim Ownership of" %} {{ profile.name }}</h1>
+
+<div class="claim-instructions">
+    <p>{% trans "To verify you own this site, add a verification file:" %}</p>
+
+    <ol>
+        <li>{% trans "Create a file at:" %} <code>{{ well_known_path }}</code></li>
+        <li>{% trans "Add this token to the file:" %}
+            <pre class="token-box">{{ verification_token }}</pre>
+        </li>
+        <li>{% trans "Click verify below once the file is accessible." %}</li>
+    </ol>
+</div>
+
+<form method="post" class="claim-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+        {{ form.confirm }}
+        <label for="id_confirm">{% trans "I confirm I have added the verification file" %}</label>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{% trans "Verify Ownership" %}</button>
+        <a href="{% url 'profiles:detail' slug=profile.slug %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
+    </div>
+</form>
+{% endblock %}

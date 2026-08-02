@@ -1,0 +1,32 @@
+{% load i18n %}
+{% load static %}
+<!doctype html>
+<html class="no-js" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>{% block title %}Ahmia{% endblock %}</title>
+  <meta name="description"
+        content="{% trans "A search engine for services accessible on the Tor network." %}">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link rel="icon" href="{% static 'images/favicon.ico' %}" type="image/x-icon">
+  <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+
+<body class="{% block body_class %}{% endblock %}">
+
+<div class="outer">
+  <div id="content" class="inner">
+
+    <header id="ahmiaHeader">
+      <h1><a href="{% url 'home' %}">Ahmia</a></h1>
+    </header>
+
+    {% block content %}{% endblock %}
+
+  </div>
+</div>
+
+</body>
+</html>

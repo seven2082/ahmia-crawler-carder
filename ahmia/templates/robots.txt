@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /add/onionsadded
+Disallow: /address
+Disallow: /static/
+Disallow: /search/
+Disallow: /*?
