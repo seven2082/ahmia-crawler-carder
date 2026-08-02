@@ -125,6 +125,7 @@ ES_PASSWORD=
 ES_CA_CERTS=
 VERIFY_CERT=False
 ELASTICSEARCH_TIMEOUT=60
+ELASTICSEARCH_INDEX=ahmia-pages
 
 # Django
 SECRET_KEY=$(openssl rand -hex 32)
@@ -138,6 +139,9 @@ SALT=$(openssl rand -hex 16)
 AHMIA_API_KEY=${API_KEY}
 EOF
 
+# Fix settings.py to use ahmia-pages index
+sed -i "s/ELASTICSEARCH_INDEX = 'latest-tor'/ELASTICSEARCH_INDEX = config('ELASTICSEARCH_INDEX', default='ahmia-pages')/" "$AHMIA_DIR/ahmia/settings.py"
+
 # Run migrations
 log "Running Django migrations..."
 python manage.py migrate --noinput 2>/dev/null || true
@@ -145,7 +149,189 @@ python manage.py migrate --noinput 2>/dev/null || true
 # Collect static
 python manage.py collectstatic --noinput 2>/dev/null || true
 
+# Seed categories
+log "Seeding profile categories..."
+python manage.py seed_categories 2>/dev/null || true
+
 deactivate
+
+# Patch elasticsearch_service.py for HTTP (no SSL)
+log "Patching elasticsearch_service.py for HTTP..."
+cat > "$AHMIA_DIR/profiles/services/elasticsearch_service.py" << 'ES_SERVICE_EOF'
+from typing import List, Dict, Optional, Any
+from datetime import datetime
+from django.conf import settings
+
+from .registry import register_service
+
+
+@register_service('elasticsearch_service')
+class ElasticsearchService:
+    """Service for querying Elasticsearch crawl data."""
+
+    def __init__(self, es_client=None):
+        self._client = es_client
+
+    @property
+    def client(self):
+        """Lazy-load ES client."""
+        if self._client is None:
+            from elasticsearch import Elasticsearch
+
+            es_url = getattr(settings, 'ELASTICSEARCH_SERVER', 'http://127.0.0.1:9200')
+            use_ssl = es_url.startswith('https://')
+
+            es_user = getattr(settings, 'ELASTICSEARCH_USERNAME', '')
+            es_pass = getattr(settings, 'ELASTICSEARCH_PASSWORD', '')
+
+            if use_ssl and es_user and es_pass:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    basic_auth=(es_user, es_pass),
+                    ca_certs=getattr(settings, 'ELASTICSEARCH_CA_CERTS', None),
+                    verify_certs=getattr(settings, 'VERIFY_CERT', False),
+                    ssl_show_warn=False,
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
+            elif use_ssl:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    verify_certs=False,
+                    ssl_show_warn=False,
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
+            else:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
+        return self._client
+
+    @property
+    def index(self) -> str:
+        return getattr(settings, 'ELASTICSEARCH_INDEX', 'ahmia-pages')
+
+    def get_domain_stats(self, domain: str) -> Dict[str, Any]:
+        """Get page count and last seen for a domain."""
+        response = self.client.search(
+            index=self.index,
+            body={
+                'size': 0,
+                'query': {
+                    'bool': {
+                        'must': [{'term': {'domain': domain}}],
+                        'must_not': [{'term': {'is_banned': True}}]
+                    }
+                },
+                'aggs': {
+                    'page_count': {'value_count': {'field': 'url'}},
+                    'last_seen': {'max': {'field': 'updated_on'}}
+                }
+            }
+        )
+
+        aggs = response.get('aggregations', {})
+        page_count = int(aggs.get('page_count', {}).get('value', 0))
+        last_seen_str = aggs.get('last_seen', {}).get('value_as_string')
+        last_seen = None
+        if last_seen_str:
+            try:
+                last_seen = datetime.fromisoformat(last_seen_str.replace('Z', '+00:00'))
+            except ValueError:
+                pass
+
+        return {
+            'page_count': page_count,
+            'last_seen': last_seen
+        }
+
+    def get_all_domains(self, exclude_banned: bool = True) -> List[Dict[str, Any]]:
+        """Get all unique domains with page counts."""
+        must_not = [{'term': {'is_banned': True}}] if exclude_banned else []
+
+        response = self.client.search(
+            index=self.index,
+            body={
+                'size': 0,
+                'query': {'bool': {'must_not': must_not}} if must_not else {'match_all': {}},
+                'aggs': {
+                    'domains': {
+                        'terms': {
+                            'field': 'domain',
+                            'size': 300000
+                        }
+                    }
+                }
+            }
+        )
+
+        buckets = response.get('aggregations', {}).get('domains', {}).get('buckets', [])
+        return [
+            {'domain': b['key'], 'page_count': b['doc_count']}
+            for b in buckets
+        ]
+
+    def get_top_pages(self, domain: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get top pages for a domain (by relevance/recency)."""
+        response = self.client.search(
+            index=self.index,
+            body={
+                'size': limit,
+                'query': {
+                    'bool': {
+                        'must': [{'term': {'domain': domain}}],
+                        'must_not': [{'term': {'is_banned': True}}]
+                    }
+                },
+                'sort': [{'updated_on': 'desc'}],
+                '_source': ['url', 'title', 'meta', 'updated_on']
+            }
+        )
+
+        hits = response.get('hits', {}).get('hits', [])
+        return [hit['_source'] for hit in hits]
+
+    def get_domain_metadata(self, domain: str) -> Dict[str, Any]:
+        """Extract most common title and description for a domain."""
+        response = self.client.search(
+            index=self.index,
+            body={
+                'size': 0,
+                'query': {
+                    'bool': {
+                        'must': [{'term': {'domain': domain}}],
+                        'must_not': [{'term': {'is_banned': True}}]
+                    }
+                },
+                'aggs': {
+                    'titles': {
+                        'terms': {'field': 'title.keyword', 'size': 5}
+                    },
+                    'descriptions': {
+                        'terms': {'field': 'meta.keyword', 'size': 5}
+                    }
+                }
+            }
+        )
+
+        aggs = response.get('aggregations', {})
+        titles = aggs.get('titles', {}).get('buckets', [])
+        descriptions = aggs.get('descriptions', {}).get('buckets', [])
+
+        generic_titles = {'home', 'index', 'welcome', 'untitled', ''}
+        best_title = ''
+        for t in titles:
+            if t['key'].lower().strip() not in generic_titles:
+                best_title = t['key']
+                break
+
+        best_description = descriptions[0]['key'] if descriptions else ''
+
+        return {
+            'title': best_title,
+            'description': best_description[:500] if best_description else ''
+        }
+ES_SERVICE_EOF
 
 # Create Elasticsearch index
 log "Creating Elasticsearch index..."
