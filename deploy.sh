@@ -191,9 +191,12 @@ deactivate
 
 # Crawler settings
 cat > "$CRAWLER_DIR/ahmia/settings_local.py" << EOF
-# Elasticsearch
+# Elasticsearch - HTTP no auth
+ELASTICSEARCH_SERVER = 'http://127.0.0.1:9200'
 ELASTICSEARCH_SERVERS = ['http://127.0.0.1:9200']
 ELASTICSEARCH_INDEX = 'ahmia-pages'
+ELASTICSEARCH_USERNAME = ''
+ELASTICSEARCH_PASSWORD = ''
 
 # Tor proxy (via Privoxy)
 HTTP_PROXY = 'http://127.0.0.1:8118'
@@ -211,6 +214,106 @@ LOG_LEVEL = 'INFO'
 COOKIES_ENABLED = False
 TELNETCONSOLE_ENABLED = False
 EOF
+
+# Patch pipelines.py for HTTP ES (no SSL)
+cat > "$CRAWLER_DIR/ahmia/ahmia/pipelines.py" << 'PIPELINES_EOF'
+# -*- coding: utf-8 -*-
+"""Pipelines - Patched for HTTP Elasticsearch"""
+import hashlib
+import logging
+from elasticsearch import Elasticsearch
+from elasticsearch.helpers import bulk
+from .items import DocumentItem
+
+logger = logging.getLogger(__name__)
+
+class CustomElasticSearchPipeline:
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings)
+
+    def __init__(self, settings):
+        self.settings = settings
+        self.items_buffer = []
+
+        es_server = settings.get("ELASTICSEARCH_SERVER", "http://127.0.0.1:9200")
+        es_servers = settings.getlist("ELASTICSEARCH_SERVERS", [])
+        if es_servers:
+            es_server = es_servers[0]
+
+        es_user = settings.get("ELASTICSEARCH_USERNAME", "")
+        es_pass = settings.get("ELASTICSEARCH_PASSWORD", "")
+
+        use_ssl = es_server.startswith("https://")
+
+        if es_user and es_pass and use_ssl:
+            self.es = Elasticsearch(
+                hosts=[es_server],
+                basic_auth=(es_user, es_pass),
+                verify_certs=False,
+                ssl_show_warn=False,
+                max_retries=5,
+                request_timeout=60,
+            )
+        elif use_ssl:
+            self.es = Elasticsearch(
+                hosts=[es_server],
+                verify_certs=False,
+                ssl_show_warn=False,
+                max_retries=5,
+                request_timeout=60,
+            )
+        else:
+            self.es = Elasticsearch(
+                hosts=[es_server],
+                max_retries=5,
+                request_timeout=60,
+            )
+
+        self.index_name = self.settings.get("ELASTICSEARCH_INDEX", "ahmia-pages")
+        logger.info(f"Connecting to ES: {es_server}")
+        try:
+            logger.info(f"Elasticsearch available: {self.es.info()}")
+        except Exception as e:
+            logger.error(f"ES connection failed: {e}")
+
+    def process_item(self, item):
+        self.index_item(item)
+        return item
+
+    def index_item(self, item):
+        doc_id = hashlib.sha1(item["url"].encode("utf-8")).hexdigest()
+
+        if isinstance(item, DocumentItem):
+            action = {
+                "_index": self.index_name,
+                "_id": doc_id,
+                "_source": dict(item)
+            }
+        else:
+            logger.error(f"Unknown item type: {item.__class__.__name__}")
+            return
+
+        self.items_buffer.append(action)
+
+        if len(self.items_buffer) >= self.settings.get("ELASTICSEARCH_BUFFER_LENGTH", 100):
+            self.send_items()
+
+    def send_items(self):
+        try:
+            success, _ = bulk(self.es, self.items_buffer,
+                              index=self.index_name,
+                              raise_on_error=True)
+            logger.info(f"Successfully indexed {success} items.")
+        except Exception as e:
+            logger.error(f"Error indexing items: {e}")
+        finally:
+            self.items_buffer = []
+
+    def close_spider(self, spider):
+        if self.items_buffer:
+            self.send_items()
+PIPELINES_EOF
 
 # Setup Tor fleet
 log "Setting up Tor fleet (${TOR_INSTANCES} instances)..."
