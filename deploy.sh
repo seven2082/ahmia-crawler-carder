@@ -315,6 +315,98 @@ class CustomElasticSearchPipeline:
             self.send_items()
 PIPELINES_EOF
 
+# Custom middleware for Tor proxy
+cat > "$CRAWLER_DIR/ahmia/ahmia/middlewares.py" << 'MIDDLEWARE_EOF'
+# -*- coding: utf-8 -*-
+"""Custom middlewares for Ahmia crawler"""
+import logging
+
+logger = logging.getLogger(__name__)
+
+class TorProxyMiddleware:
+    """Middleware to route all requests through Tor proxy"""
+
+    def __init__(self):
+        self.proxy = "http://127.0.0.1:8118"
+        logger.info(f"TorProxyMiddleware initialized with proxy: {self.proxy}")
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls()
+
+    def process_request(self, request, spider):
+        request.meta["proxy"] = self.proxy
+        request.meta["download_timeout"] = 60
+        return None
+MIDDLEWARE_EOF
+
+# Custom settings.py with local seedlist support
+cat > "$CRAWLER_DIR/ahmia/ahmia/settings.py" << 'SETTINGS_EOF'
+# -*- coding: utf-8 -*-
+"""Scrapy settings - Local config with Tor proxy"""
+import os
+
+BOT_NAME = "ahmia"
+SPIDER_MODULES = ["ahmia.spiders"]
+NEWSPIDER_MODULE = "ahmia.spiders"
+
+ROBOTSTXT_OBEY = False
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0"
+
+# Middleware - our custom Tor proxy injector
+DOWNLOADER_MIDDLEWARES = {
+    "ahmia.middlewares.TorProxyMiddleware": 100,
+}
+
+# Elasticsearch
+ITEM_PIPELINES = {
+    "ahmia.pipelines.CustomElasticSearchPipeline": 300,
+}
+
+# Crawl settings
+CONCURRENT_REQUESTS = 8
+CONCURRENT_REQUESTS_PER_DOMAIN = 2
+DOWNLOAD_DELAY = 2
+RANDOMIZE_DOWNLOAD_DELAY = True
+DOWNLOAD_TIMEOUT = 60
+RETRY_TIMES = 3
+RETRY_HTTP_CODES = [500, 502, 503, 504, 408, 429]
+
+LOG_LEVEL = "INFO"
+COOKIES_ENABLED = False
+TELNETCONSOLE_ENABLED = False
+
+# Memory
+MEMUSAGE_ENABLED = True
+MEMUSAGE_LIMIT_MB = 512
+MEMUSAGE_WARNING_MB = 400
+
+# Load local seedlist
+SEEDLIST = []
+seedlist_path = os.path.join(os.path.dirname(__file__), "seedlist.txt")
+if os.path.exists(seedlist_path):
+    with open(seedlist_path, "r") as f:
+        for line in f:
+            url = line.strip()
+            if url and url.startswith("http"):
+                SEEDLIST.append(url)
+
+print(f"\n settings.py loaded: SEEDLIST with {len(SEEDLIST)} onion addresses\n")
+
+# Import local settings
+try:
+    from settings_local import *
+except ImportError:
+    pass
+SETTINGS_EOF
+
+# Fetch initial seedlist from ahmia.fi onion
+log "Fetching initial seedlist..."
+cat > "$CRAWLER_DIR/ahmia/ahmia/seedlist.txt" << 'SEEDLIST_EOF'
+http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/
+http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion/
+SEEDLIST_EOF
+
 # Setup Tor fleet
 log "Setting up Tor fleet (${TOR_INSTANCES} instances)..."
 systemctl stop tor 2>/dev/null || true
