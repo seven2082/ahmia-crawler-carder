@@ -26,5 +26,6 @@ class ProfileSerializer(serializers.ModelSerializer):
             'slug', 'current_domain', 'name', 'description', 'category',
             'is_verified', 'verified_at', 'owner_username',
             'page_count', 'last_seen', 'status', 'domain_history', 'tags',
+            'is_online', 'response_time_ms', 'last_checked', 'screenshot',
             'created_at', 'updated_at'
         ]
