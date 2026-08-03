@@ -27,7 +27,7 @@ def is_domain_prefix(name: str, domain: str) -> bool:
     """Check if name is just a domain prefix (not a real title)."""
     if not name or len(name) <= 16:
         prefix = domain.replace('.onion', '')[:16]
-        return name == prefix or re.match(r'^[a-z0-9]{8,16}$', name, re.I)
+        return name == prefix or bool(re.match(r'^[a-z0-9]{8,16}$', name, re.I))
     return False
 
 
