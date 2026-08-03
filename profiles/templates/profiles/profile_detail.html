@@ -17,6 +17,12 @@
         {% endif %}
     </header>
 
+    {% if profile.screenshot %}
+    <div class="profile-screenshot">
+        <img src="{{ profile.screenshot }}" alt="{{ profile.name }}">
+    </div>
+    {% endif %}
+
     <section class="profile-body">
         <p class="description">{{ profile.description }}</p>
 

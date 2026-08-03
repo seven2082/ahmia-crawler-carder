@@ -1,14 +1,31 @@
 {% load i18n %}
 <article class="profile-card">
-    <h3><a href="{% url 'profiles:detail' slug=profile.slug %}">{{ profile.name }}</a></h3>
-    {% if profile.category %}
-    <span class="category-badge">{{ profile.category.name }}</span>
+    {% if profile.screenshot %}
+    <a href="{% url 'profiles:detail' slug=profile.slug %}" class="profile-thumbnail">
+        <img src="{{ profile.screenshot }}" alt="{{ profile.name }}" loading="lazy">
+    </a>
     {% endif %}
-    <p class="description">{{ profile.description|truncatechars:150 }}</p>
-    <div class="meta">
-        <span class="page-count">{{ profile.page_count }} {% trans "pages" %}</span>
-        {% if profile.is_verified %}
-        <span class="verified-badge">{% trans "Verified" %}</span>
+    <div class="profile-card-content">
+        <h3>
+            <a href="{% url 'profiles:detail' slug=profile.slug %}">{{ profile.name }}</a>
+            {% if profile.is_online %}
+            <span class="status-badge status-online">{% trans "Online" %}</span>
+            {% else %}
+            <span class="status-badge status-offline">{% trans "Offline" %}</span>
+            {% endif %}
+        </h3>
+        {% if profile.category %}
+        <span class="category-badge">{{ profile.category.name }}</span>
         {% endif %}
+        <p class="description">{{ profile.description|truncatechars:150 }}</p>
+        <div class="meta">
+            {% if profile.response_time_ms %}
+            <span class="response-time">{{ profile.response_time_ms }}ms</span>
+            {% endif %}
+            <span class="page-count">{{ profile.page_count }} {% trans "pages" %}</span>
+            {% if profile.is_verified %}
+            <span class="verified-badge">{% trans "Verified" %}</span>
+            {% endif %}
+        </div>
     </div>
 </article>

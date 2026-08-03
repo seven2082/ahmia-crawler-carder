@@ -1,11 +1,37 @@
 {% load i18n %}
 <div class="stats-box">
     <div class="stat">
+        <span class="label">{% trans "Site Status" %}</span>
+        <span class="value">
+            {% if profile.is_online %}
+            <span class="status-badge status-online">{% trans "Online" %}</span>
+            {% else %}
+            <span class="status-badge status-offline">{% trans "Offline" %}</span>
+            {% endif %}
+        </span>
+    </div>
+    {% if profile.response_time_ms %}
+    <div class="stat">
+        <span class="label">{% trans "Response Time" %}</span>
+        <span class="value">{{ profile.response_time_ms }}ms</span>
+    </div>
+    {% endif %}
+    <div class="stat">
+        <span class="label">{% trans "Last Checked" %}</span>
+        <span class="value">
+            {% if profile.last_checked %}
+                {{ profile.last_checked|timesince }} {% trans "ago" %}
+            {% else %}
+                {% trans "Never" %}
+            {% endif %}
+        </span>
+    </div>
+    <div class="stat">
         <span class="label">{% trans "Pages Indexed" %}</span>
         <span class="value">{{ page_count|default:profile.page_count }}</span>
     </div>
     <div class="stat">
-        <span class="label">{% trans "Last Seen" %}</span>
+        <span class="label">{% trans "Last Seen in Index" %}</span>
         <span class="value">
             {% if last_seen %}
                 {{ last_seen|timesince }} {% trans "ago" %}
@@ -15,9 +41,5 @@
                 {% trans "Unknown" %}
             {% endif %}
         </span>
-    </div>
-    <div class="stat">
-        <span class="label">{% trans "Status" %}</span>
-        <span class="value status-{{ profile.status }}">{{ profile.get_status_display }}</span>
     </div>
 </div>
