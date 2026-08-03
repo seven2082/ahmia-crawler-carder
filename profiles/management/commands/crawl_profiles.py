@@ -1,5 +1,6 @@
 import re
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from profiles.models import OnionProfile
 from profiles.services import get_service
@@ -134,7 +135,14 @@ class Command(BaseCommand):
             try:
                 data = crawler.crawl_domain(profile.current_domain)
 
+                # Always update online status and last_checked
+                profile.is_online = data.get('reachable', False)
+                profile.last_checked = timezone.now()
+                profile.response_time_ms = data.get('response_time_ms')
+                update_fields = ['is_online', 'last_checked', 'response_time_ms', 'updated_at']
+
                 if not data.get('reachable'):
+                    profile.save(update_fields=update_fields)
                     unreachable += 1
                     continue
 
@@ -145,15 +153,17 @@ class Command(BaseCommand):
                 # Only update title if new is better
                 if new_title and is_better_title(new_title, profile.name, profile.current_domain):
                     profile.name = new_title[:200]
+                    update_fields.append('name')
                     changed = True
 
                 # Only update description if current is empty or very short
                 if new_desc and (not profile.description or len(profile.description) < 20):
                     profile.description = new_desc[:500]
+                    update_fields.append('description')
                     changed = True
 
+                profile.save(update_fields=update_fields)
                 if changed:
-                    profile.save(update_fields=['name', 'description', 'updated_at'])
                     updated += 1
                 else:
                     unchanged += 1

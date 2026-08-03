@@ -27,6 +27,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Sync complete: {result['created']} created, "
+                    f"{result.get('merged', 0)} merged, "
                     f"{result['skipped']} skipped, "
                     f"{result['total_domains']} total domains"
                 )

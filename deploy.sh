@@ -292,7 +292,7 @@ class ElasticsearchService:
         return [hit['_source'] for hit in hits]
 
     def get_domain_metadata(self, domain: str) -> Dict[str, Any]:
-        """Extract most common title and description for a domain."""
+        """Extract best title and description for a domain, filtering spam/generic."""
         response = self.client.search(
             index=self.index,
             body={
@@ -305,10 +305,10 @@ class ElasticsearchService:
                 },
                 'aggs': {
                     'titles': {
-                        'terms': {'field': 'title.keyword', 'size': 5}
+                        'terms': {'field': 'title.keyword', 'size': 20}
                     },
                     'descriptions': {
-                        'terms': {'field': 'meta.keyword', 'size': 5}
+                        'terms': {'field': 'meta.keyword', 'size': 20}
                     }
                 }
             }
@@ -318,17 +318,45 @@ class ElasticsearchService:
         titles = aggs.get('titles', {}).get('buckets', [])
         descriptions = aggs.get('descriptions', {}).get('buckets', [])
 
-        generic_titles = {'home', 'index', 'welcome', 'untitled', ''}
+        generic_titles = {
+            'home', 'index', 'welcome', 'untitled', '', 'loading', 'error',
+            '404', 'not found', 'page not found', 'access denied', 'forbidden',
+            'coming soon', 'under construction', 'maintenance', 'offline'
+        }
+
+        spam_patterns = [
+            'child porn', 'pedo', 'cp porn', 'loli', 'jailbait', 'preteen',
+            'teen', 'teens', 'children', 'little', 'angel', 'little angel',
+            'boys', 'child', 'kids', 'cp '
+        ]
+
+        def is_spam(text):
+            lower = text.lower()
+            return any(p in lower for p in spam_patterns)
+
+        def is_generic(text):
+            return text.lower().strip() in generic_titles
+
         best_title = ''
         for t in titles:
-            if t['key'].lower().strip() not in generic_titles:
-                best_title = t['key']
-                break
+            title = t['key'].strip()
+            if title and not is_generic(title) and not is_spam(title):
+                if len(title) > len(best_title):
+                    best_title = title
 
-        best_description = descriptions[0]['key'] if descriptions else ''
+        best_description = ''
+        for d in descriptions:
+            desc = d['key'].strip()
+            if desc and not is_spam(desc):
+                if len(desc) > len(best_description):
+                    best_description = desc
+
+        if not best_title:
+            domain_prefix = domain.replace('.onion', '')[:16]
+            best_title = domain_prefix
 
         return {
-            'title': best_title,
+            'title': best_title[:200],
             'description': best_description[:500] if best_description else ''
         }
 ES_SERVICE_EOF
@@ -979,12 +1007,13 @@ AUTO_EOF
 
 chmod +x "$AHMIA_DIR/auto-deploy.sh"
 
-# Setup cron for auto-deploy (every 2 minutes)
-log "Setting up auto-deploy cron..."
-CRON_JOB="*/2 * * * * /bin/bash $AHMIA_DIR/auto-deploy.sh 2>&1"
+# Setup cron for auto-deploy (every 2 minutes) and sync_profiles (every 10 minutes)
+log "Setting up cron jobs..."
+CRON_DEPLOY="*/2 * * * * /bin/bash $AHMIA_DIR/auto-deploy.sh 2>&1"
+CRON_SYNC="*/10 * * * * cd $AHMIA_DIR && source venv/bin/activate && python manage.py sync_profiles >> /var/log/ahmia-sync.log 2>&1"
 
-# Remove existing ahmia cron entries and add new one
-(crontab -l 2>/dev/null | grep -v "auto-deploy.sh" || true; echo "$CRON_JOB") | crontab -
+# Remove existing ahmia cron entries and add new ones
+(crontab -l 2>/dev/null | grep -v "auto-deploy.sh" | grep -v "sync_profiles" || true; echo "$CRON_DEPLOY"; echo "$CRON_SYNC") | crontab -
 
 echo ""
 echo "============================================"

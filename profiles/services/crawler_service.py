@@ -1,6 +1,7 @@
 import re
 import socket
-from typing import Dict, Any, Optional
+import time
+from typing import Dict, Any, Optional, Tuple
 from urllib.parse import urlparse
 import socks
 from bs4 import BeautifulSoup
@@ -24,8 +25,8 @@ class CrawlerService:
         s.settimeout(self.timeout)
         return s
 
-    def fetch_page(self, url: str) -> Optional[str]:
-        """Fetch page HTML via Tor."""
+    def fetch_page(self, url: str) -> Tuple[Optional[str], Optional[int]]:
+        """Fetch page HTML via Tor. Returns (html, response_time_ms)."""
         try:
             parsed = urlparse(url)
             host = parsed.netloc or parsed.path.split('/')[0]
@@ -34,6 +35,7 @@ class CrawlerService:
             if not path.startswith('/'):
                 path = '/' + path
 
+            start_time = time.time()
             sock = self._create_tor_socket()
             sock.connect((host, port))
 
@@ -50,6 +52,7 @@ class CrawlerService:
                     break
 
             sock.close()
+            response_time_ms = int((time.time() - start_time) * 1000)
 
             try:
                 header_end = response.find(b'\r\n\r\n')
@@ -59,14 +62,14 @@ class CrawlerService:
                     body = response
 
                 try:
-                    return body.decode('utf-8', errors='replace')
+                    return body.decode('utf-8', errors='replace'), response_time_ms
                 except:
-                    return body.decode('latin-1', errors='replace')
+                    return body.decode('latin-1', errors='replace'), response_time_ms
             except:
-                return None
+                return None, None
 
         except Exception:
-            return None
+            return None, None
 
     def extract_metadata(self, html: str) -> Dict[str, Any]:
         """Extract title, description, keywords from HTML."""
@@ -114,19 +117,21 @@ class CrawlerService:
     def crawl_domain(self, domain: str) -> Dict[str, Any]:
         """Crawl a .onion domain and extract metadata."""
         url = f'http://{domain}/'
-        html = self.fetch_page(url)
+        html, response_time_ms = self.fetch_page(url)
 
         if html:
             metadata = self.extract_metadata(html)
             metadata['crawled'] = True
             metadata['reachable'] = True
+            metadata['response_time_ms'] = response_time_ms
         else:
             metadata = {
                 'title': '',
                 'description': '',
                 'keywords': '',
                 'crawled': True,
-                'reachable': False
+                'reachable': False,
+                'response_time_ms': None
             }
 
         return metadata

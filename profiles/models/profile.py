@@ -52,6 +52,12 @@ class OnionProfile(BaseModel):
     page_count = models.IntegerField(default=0)
     last_seen = models.DateTimeField(null=True, blank=True)
 
+    # Live status from crawler
+    is_online = models.BooleanField(default=False, db_index=True)
+    response_time_ms = models.IntegerField(null=True, blank=True)
+    last_checked = models.DateTimeField(null=True, blank=True)
+    screenshot = models.TextField(blank=True, default='')  # Base64 PNG or URL
+
     # Status
     status = models.CharField(
         max_length=20,
