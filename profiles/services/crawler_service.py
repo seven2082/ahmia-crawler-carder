@@ -12,7 +12,7 @@ from .registry import register_service
 class CrawlerService:
     """Service for crawling .onion sites to extract metadata."""
 
-    def __init__(self, tor_host: str = '127.0.0.1', tor_port: int = 9050, timeout: int = 30):
+    def __init__(self, tor_host: str = '127.0.0.1', tor_port: int = 9050, timeout: int = 15):
         self.tor_host = tor_host
         self.tor_port = tor_port
         self.timeout = timeout
