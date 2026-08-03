@@ -4,3 +4,5 @@ elasticsearch==8.17.1
 python-decouple==3.8
 requests==2.34.2
 dj-database-url==2.1.0
+PySocks>=1.7.1
+beautifulsoup4>=4.12.0

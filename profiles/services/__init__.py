@@ -6,9 +6,10 @@ from .verification_service import VerificationService
 from .moderation_service import ModerationService
 from .sync_service import SyncService
 from .trust_service import TrustService
+from .crawler_service import CrawlerService
 
 __all__ = [
     'ServiceRegistry', 'register_service', 'get_service', 'get_default_registry',
     'SlugService', 'ElasticsearchService', 'ProfileService', 'VerificationService',
-    'ModerationService', 'SyncService', 'TrustService',
+    'ModerationService', 'SyncService', 'TrustService', 'CrawlerService',
 ]

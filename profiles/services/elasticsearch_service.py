@@ -17,19 +17,39 @@ class ElasticsearchService:
         """Lazy-load ES client."""
         if self._client is None:
             from elasticsearch import Elasticsearch
-            self._client = Elasticsearch(
-                hosts=[settings.ELASTICSEARCH_SERVER],
-                http_auth=(settings.ELASTICSEARCH_USERNAME, settings.ELASTICSEARCH_PASSWORD),
-                ca_certs=settings.ELASTICSEARCH_CA_CERTS,
-                verify_certs=settings.VERIFY_CERT,
-                ssl_show_warn=settings.VERIFY_CERT,
-                timeout=settings.ELASTICSEARCH_TIMEOUT
-            )
+
+            es_url = getattr(settings, 'ELASTICSEARCH_SERVER', 'http://127.0.0.1:9200')
+            use_ssl = es_url.startswith('https://')
+
+            es_user = getattr(settings, 'ELASTICSEARCH_USERNAME', '')
+            es_pass = getattr(settings, 'ELASTICSEARCH_PASSWORD', '')
+
+            if use_ssl and es_user and es_pass:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    basic_auth=(es_user, es_pass),
+                    ca_certs=getattr(settings, 'ELASTICSEARCH_CA_CERTS', None),
+                    verify_certs=getattr(settings, 'VERIFY_CERT', False),
+                    ssl_show_warn=False,
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
+            elif use_ssl:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    verify_certs=False,
+                    ssl_show_warn=False,
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
+            else:
+                self._client = Elasticsearch(
+                    hosts=[es_url],
+                    timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 60)
+                )
         return self._client
 
     @property
     def index(self) -> str:
-        return settings.ELASTICSEARCH_INDEX
+        return getattr(settings, 'ELASTICSEARCH_INDEX', 'ahmia-pages')
 
     def get_domain_stats(self, domain: str) -> Dict[str, Any]:
         """Get page count and last seen for a domain."""
@@ -112,43 +132,87 @@ class ElasticsearchService:
         return [hit['_source'] for hit in hits]
 
     def get_domain_metadata(self, domain: str) -> Dict[str, Any]:
-        """Extract most common title and description for a domain."""
+        """Extract best title and description for a domain, filtering spam/generic."""
         response = self.client.search(
             index=self.index,
             body={
-                'size': 0,
+                'size': 50,
                 'query': {
                     'bool': {
                         'must': [{'term': {'domain': domain}}],
                         'must_not': [{'term': {'is_banned': True}}]
                     }
                 },
-                'aggs': {
-                    'titles': {
-                        'terms': {'field': 'title.keyword', 'size': 5}
-                    },
-                    'descriptions': {
-                        'terms': {'field': 'meta.keyword', 'size': 5}
-                    }
-                }
+                '_source': ['title', 'meta'],
+                'sort': [{'updated_on': 'desc'}]
             }
         )
 
-        aggs = response.get('aggregations', {})
-        titles = aggs.get('titles', {}).get('buckets', [])
-        descriptions = aggs.get('descriptions', {}).get('buckets', [])
+        hits = response.get('hits', {}).get('hits', [])
 
-        # Filter out generic titles
-        generic_titles = {'home', 'index', 'welcome', 'untitled', ''}
+        titles = {}
+        descriptions = {}
+        for hit in hits:
+            src = hit.get('_source', {})
+            t = src.get('title', '').strip()
+            d = src.get('meta', '').strip()
+            if t:
+                titles[t] = titles.get(t, 0) + 1
+            if d:
+                descriptions[d] = descriptions.get(d, 0) + 1
+
+        generic_titles = {
+            'home', 'index', 'welcome', 'untitled', '', 'loading', 'error',
+            '404', 'not found', 'page not found', 'access denied', 'forbidden',
+            'coming soon', 'under construction', 'maintenance', 'offline'
+        }
+
+        spam_patterns = [
+            'child porn', 'child sex', 'child abuse', 'child nude', 'child naked',
+            'cp porn', 'kids porn', 'kiddie porn', 'kiddie',
+            'pedo', 'pedophil',
+            'loli porn', 'loli hentai', 'lolibooru', 'lolicon', 'lolihub',
+            'preteen porn', 'preteen sex', 'preteen nude', 'preteens',
+            'jailbait', 'underage',
+            'young nude', 'young porn', 'young sex', 'youngandcute',
+            'cphub', 'boyslove', 'girlslove', 'boylove', 'girllove',
+            'toddlercon', 'shotacon', 'shota',
+            'baby slut', 'baby porn', 'baby sex',
+            'bestiality', 'zoophilia', 'animal sex', 'zoo porn', 'zoo sex', 'zoo teen',
+            'real child', 'real kids', 'real cp',
+            'hardcore cp', 'hurtcore', 'hardcore baby',
+            'little angel', 'little girl', 'little boy', 'small girl', 'small boy',
+            'children porn', 'childrens porn', 'nice children',
+            'young cam', 'underage cam', 'teen cam',
+            'nn model', 'cp cp', 'cp |', '| cp'
+        ]
+
+        def is_spam(text):
+            lower = text.lower()
+            return any(p in lower for p in spam_patterns)
+
+        def is_generic(text):
+            return text.lower().strip() in generic_titles
+
         best_title = ''
-        for t in titles:
-            if t['key'].lower().strip() not in generic_titles:
-                best_title = t['key']
+        sorted_titles = sorted(titles.items(), key=lambda x: (-x[1], -len(x[0])))
+        for title, count in sorted_titles:
+            if title and not is_generic(title) and not is_spam(title):
+                best_title = title
                 break
 
-        best_description = descriptions[0]['key'] if descriptions else ''
+        best_description = ''
+        sorted_descs = sorted(descriptions.items(), key=lambda x: (-x[1], -len(x[0])))
+        for desc, count in sorted_descs:
+            if desc and not is_spam(desc):
+                best_description = desc
+                break
+
+        if not best_title:
+            domain_prefix = domain.replace('.onion', '')[:16]
+            best_title = domain_prefix
 
         return {
-            'title': best_title,
+            'title': best_title[:200],
             'description': best_description[:500] if best_description else ''
         }
