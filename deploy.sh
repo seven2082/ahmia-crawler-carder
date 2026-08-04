@@ -1007,13 +1007,15 @@ AUTO_EOF
 
 chmod +x "$AHMIA_DIR/auto-deploy.sh"
 
-# Setup cron for auto-deploy (every 2 minutes) and sync_profiles (every 10 minutes)
+# Setup cron for auto-deploy and profile management
 log "Setting up cron jobs..."
 CRON_DEPLOY="*/2 * * * * /bin/bash $AHMIA_DIR/auto-deploy.sh 2>&1"
-CRON_SYNC="*/10 * * * * cd $AHMIA_DIR && source venv/bin/activate && python manage.py sync_profiles >> /var/log/ahmia-sync.log 2>&1"
+CRON_SYNC="*/10 * * * * cd $AHMIA_DIR && $AHMIA_DIR/venv/bin/python manage.py sync_profiles >> /var/log/ahmia-sync.log 2>&1"
+CRON_CRAWL="*/15 * * * * cd $AHMIA_DIR && $AHMIA_DIR/venv/bin/python manage.py crawl_profiles --limit 300 >> /var/log/ahmia-crawl.log 2>&1"
+CRON_SCREENSHOTS="*/45 * * * * cd $AHMIA_DIR && $AHMIA_DIR/venv/bin/python manage.py capture_screenshots --limit 50 >> /var/log/ahmia-screenshots.log 2>&1"
 
 # Remove existing ahmia cron entries and add new ones
-(crontab -l 2>/dev/null | grep -v "auto-deploy.sh" | grep -v "sync_profiles" || true; echo "$CRON_DEPLOY"; echo "$CRON_SYNC") | crontab -
+(crontab -l 2>/dev/null | grep -v "auto-deploy.sh" | grep -v "sync_profiles" | grep -v "crawl_profiles" | grep -v "capture_screenshots" || true; echo "$CRON_DEPLOY"; echo "$CRON_SYNC"; echo "$CRON_CRAWL"; echo "$CRON_SCREENSHOTS") | crontab -
 
 echo ""
 echo "============================================"
