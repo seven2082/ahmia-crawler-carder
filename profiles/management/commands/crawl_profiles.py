@@ -39,35 +39,28 @@ def title_quality_score(title: str) -> int:
 
     lower = title.lower().strip()
 
-    # CSAM = reject
     for p in SPAM_PATTERNS:
         if p in lower:
             return -100
 
-    # Generic/error = reject
     for g in GENERIC_TITLES:
         if g in lower:
             return -50
 
-    # Just numbers/symbols = bad
     if re.match(r'^[\d\W]+$', title):
         return -10
 
-    # Too short = weak
     if len(title) < 5:
         return 0
 
-    # Base score by length (capped)
     score = min(len(title), 60)
 
-    # Bonus for having multiple words
     words = len(title.split())
     if words >= 2:
         score += 10
     if words >= 3:
         score += 5
 
-    # Bonus for having a separator (suggests structured title)
     if any(sep in title for sep in [' - ', ' | ', ' :: ', ' — ']):
         score += 10
 
@@ -76,16 +69,13 @@ def title_quality_score(title: str) -> int:
 
 def is_better_title(new_title: str, old_title: str, domain: str) -> bool:
     """Check if new title is better than old."""
-    # If old is domain prefix, any real title is better
     if is_domain_prefix(old_title, domain):
         new_score = title_quality_score(new_title)
         return new_score > 0
 
-    # Compare scores
     old_score = title_quality_score(old_title)
     new_score = title_quality_score(new_title)
 
-    # New must be significantly better (avoid churn)
     return new_score > old_score + 10
 
 
@@ -110,18 +100,22 @@ class Command(BaseCommand):
         limit = options['limit']
         only_missing = options['only_missing']
 
-        profiles = OnionProfile.objects.all()
-
         if only_missing:
+            profiles = list(OnionProfile.objects.all())
             profiles = [
                 p for p in profiles
                 if len(p.name) <= 16 and p.name == p.current_domain.replace('.onion', '')[:16]
-            ]
+            ][:limit]
             self.stdout.write(f'Found {len(profiles)} profiles with missing titles')
         else:
-            profiles = list(profiles[:limit])
+            unchecked = list(OnionProfile.objects.filter(last_checked__isnull=True)[:limit])
+            remaining = limit - len(unchecked)
+            if remaining > 0:
+                checked = list(OnionProfile.objects.filter(last_checked__isnull=False).order_by('last_checked')[:remaining])
+                profiles = unchecked + checked
+            else:
+                profiles = unchecked
 
-        profiles = profiles[:limit]
         self.stdout.write(f'Crawling {len(profiles)} profiles...')
 
         updated = 0
@@ -135,7 +129,6 @@ class Command(BaseCommand):
             try:
                 data = crawler.crawl_domain(profile.current_domain)
 
-                # Always update online status and last_checked
                 profile.is_online = data.get('reachable', False)
                 profile.last_checked = timezone.now()
                 profile.response_time_ms = data.get('response_time_ms')
@@ -150,13 +143,11 @@ class Command(BaseCommand):
                 new_title = data.get('title', '').strip()
                 new_desc = data.get('description', '').strip()
 
-                # Only update title if new is better
                 if new_title and is_better_title(new_title, profile.name, profile.current_domain):
                     profile.name = new_title[:200]
                     update_fields.append('name')
                     changed = True
 
-                # Only update description if current is empty or very short
                 if new_desc and (not profile.description or len(profile.description) < 20):
                     profile.description = new_desc[:500]
                     update_fields.append('description')
