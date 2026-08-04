@@ -57,6 +57,7 @@ class OnionProfile(BaseModel):
     response_time_ms = models.IntegerField(null=True, blank=True)
     last_checked = models.DateTimeField(null=True, blank=True)
     screenshot = models.TextField(blank=True, default='')  # Base64 PNG or URL
+    screenshot_synced = models.BooleanField(default=False, db_index=True)
 
     # Status
     status = models.CharField(
