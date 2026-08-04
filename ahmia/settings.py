@@ -33,7 +33,7 @@ else:
 # Elasticsearch settings using environment variables for sensitive information
 #I.e, ELASTICSEARCH_SERVER = config('ES_URL', default="https://localhost:9200/")
 ELASTICSEARCH_SERVER = config('ES_URL', default="https://10.0.0.2:9200/")
-ELASTICSEARCH_INDEX = 'latest-tor'
+ELASTICSEARCH_INDEX = config('ELASTICSEARCH_INDEX', default='ahmia-pages')
 ELASTICSEARCH_USERNAME = config('ES_USERNAME', default='elastic')
 ELASTICSEARCH_PASSWORD = config('ES_PASSWORD', default='password12345')
 ELASTICSEARCH_CA_CERTS = config('ES_CA_CERTS', default='/etc/elasticsearch/certs/http_ca.crt')

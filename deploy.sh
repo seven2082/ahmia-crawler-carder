@@ -42,6 +42,19 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get upgrade -y -qq
 
+# Setup swap (2GB) for Elasticsearch on low-memory servers
+log "Setting up swap..."
+if [ ! -f /swapfile ]; then
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    log "Swap enabled: 2GB"
+else
+    log "Swap already exists"
+fi
+
 # Install dependencies
 log "Installing dependencies..."
 apt-get install -y -qq \
