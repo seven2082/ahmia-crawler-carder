@@ -1,9 +1,9 @@
 import re
-import socket
 import time
 from typing import Dict, Any, Optional, Tuple
-from urllib.parse import urlparse
-import socks
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 from .registry import register_service
@@ -13,63 +13,80 @@ from .registry import register_service
 class CrawlerService:
     """Service for crawling .onion sites to extract metadata."""
 
-    def __init__(self, tor_host: str = '127.0.0.1', tor_port: int = 9050, timeout: int = 15):
+    def __init__(self, tor_host: str = '127.0.0.1', tor_port: int = 9050, timeout: int = 45):
         self.tor_host = tor_host
         self.tor_port = tor_port
         self.timeout = timeout
+        self.proxies = {
+            'http': f'socks5h://{tor_host}:{tor_port}',
+            'https': f'socks5h://{tor_host}:{tor_port}'
+        }
 
-    def _create_tor_socket(self):
-        """Create a socket that routes through Tor SOCKS proxy."""
-        s = socks.socksocket()
-        s.set_proxy(socks.SOCKS5, self.tor_host, self.tor_port)
-        s.settimeout(self.timeout)
-        return s
+    def _create_session(self) -> requests.Session:
+        """Create a requests session with retry logic."""
+        session = requests.Session()
+        retry = Retry(total=2, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        return session
 
     def fetch_page(self, url: str) -> Tuple[Optional[str], Optional[int]]:
         """Fetch page HTML via Tor. Returns (html, response_time_ms)."""
         try:
-            parsed = urlparse(url)
-            host = parsed.netloc or parsed.path.split('/')[0]
-            port = 80
-            path = parsed.path or '/'
-            if not path.startswith('/'):
-                path = '/' + path
-
+            session = self._create_session()
             start_time = time.time()
-            sock = self._create_tor_socket()
-            sock.connect((host, port))
 
-            request = f"GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nUser-Agent: Mozilla/5.0\r\n\r\n"
-            sock.send(request.encode())
+            response = session.get(
+                url,
+                proxies=self.proxies,
+                timeout=self.timeout,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+                allow_redirects=True,
+                verify=False
+            )
 
-            response = b''
-            while True:
-                chunk = sock.recv(8192)
-                if not chunk:
-                    break
-                response += chunk
-                if len(response) > 1024 * 1024:  # 1MB limit
-                    break
-
-            sock.close()
             response_time_ms = int((time.time() - start_time) * 1000)
 
-            try:
-                header_end = response.find(b'\r\n\r\n')
-                if header_end > 0:
-                    body = response[header_end + 4:]
-                else:
-                    body = response
-
-                try:
-                    return body.decode('utf-8', errors='replace'), response_time_ms
-                except:
-                    return body.decode('latin-1', errors='replace'), response_time_ms
-            except:
+            if response.status_code < 400:
+                return response.text, response_time_ms
+            else:
                 return None, None
 
+        except requests.exceptions.Timeout:
+            return None, None
+        except requests.exceptions.ConnectionError:
+            return None, None
         except Exception:
             return None, None
+
+    def check_reachable(self, domain: str) -> Tuple[bool, Optional[int]]:
+        """Quick reachability check using HEAD request."""
+        try:
+            session = self._create_session()
+            start_time = time.time()
+
+            # Try HTTPS first, fall back to HTTP
+            for scheme in ['https', 'http']:
+                try:
+                    response = session.head(
+                        f'{scheme}://{domain}/',
+                        proxies=self.proxies,
+                        timeout=self.timeout,
+                        headers={'User-Agent': 'Mozilla/5.0'},
+                        allow_redirects=True,
+                        verify=False
+                    )
+                    response_time_ms = int((time.time() - start_time) * 1000)
+
+                    if response.status_code < 500:
+                        return True, response_time_ms
+                except Exception:
+                    continue
+
+            return False, None
+        except Exception:
+            return False, None
 
     def extract_metadata(self, html: str) -> Dict[str, Any]:
         """Extract title, description, keywords from HTML."""
@@ -116,8 +133,15 @@ class CrawlerService:
 
     def crawl_domain(self, domain: str) -> Dict[str, Any]:
         """Crawl a .onion domain and extract metadata."""
-        url = f'http://{domain}/'
-        html, response_time_ms = self.fetch_page(url)
+        # Try HTTPS first, then HTTP
+        html = None
+        response_time_ms = None
+
+        for scheme in ['https', 'http']:
+            url = f'{scheme}://{domain}/'
+            html, response_time_ms = self.fetch_page(url)
+            if html:
+                break
 
         if html:
             metadata = self.extract_metadata(html)
@@ -125,13 +149,15 @@ class CrawlerService:
             metadata['reachable'] = True
             metadata['response_time_ms'] = response_time_ms
         else:
+            # Fall back to quick reachability check
+            reachable, response_time_ms = self.check_reachable(domain)
             metadata = {
                 'title': '',
                 'description': '',
                 'keywords': '',
                 'crawled': True,
-                'reachable': False,
-                'response_time_ms': None
+                'reachable': reachable,
+                'response_time_ms': response_time_ms
             }
 
         return metadata
